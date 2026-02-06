@@ -36,7 +36,7 @@ jobs:
           rm -f *.pdf *.aux *.log *.toc *.bbl *.blg
           
           # Run MiKTeX Docker container to compile the document
-          docker run -ti \
+          docker run -i \
             -v miktex_data:/var/lib/miktex \
             -v "$(pwd)":/miktex/work \
             -e MIKTEX_UID=$(id -u) \
