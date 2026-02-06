@@ -1,0 +1,77 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'V*'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-release:
+    name: Build and Release PDF
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install TeX Live
+        uses: zauguin/install-texlive@v4
+        with:
+          packages: >
+            l3build latex latex-bin luatex latex-bin-dev 
+
+      - name: Install Chinese fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-noto-cjk
+
+      - name: Compile LaTeX document
+        run: |
+          # Clean previous files
+          rm -f *.pdf *.aux *.log *.toc *.bbl *.blg
+          
+          latexmk -xelatex main.tex
+          
+          # Check if PDF was generated
+          if [ ! -f main.pdf ]; then
+            echo "Error: PDF not generated"
+            exit 1
+          fi
+
+      - name: Rename PDF with version
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          mv main.pdf "山东农业大学课程报告_${VERSION}.pdf"
+
+      - name: Create Release
+        id: create_release  # 添加这行来标识步骤
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref_name }}
+          release_name: Release ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          body: |
+            ## 📝 山东农业大学课程报告
+            
+            自动生成的PDF文档
+            
+            - 编译环境: Ubuntu + TeX Live 2025
+            - 编译时间: $(date -u)
+
+      - name: Upload PDF to Release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./山东农业大学课程报告_${{ github.ref_name }}.pdf  # 修正变量引用
+          asset_name: 山东农业大学课程报告_${{ github.ref_name }}.pdf  # 修正变量引用
+          asset_content_type: application/pdf

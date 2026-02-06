@@ -1,0 +1,66 @@
+name: Test CI
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-build:
+    name: Test LaTeX Build
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install TeX Live
+        uses: zauguin/install-texlive@v4
+        with:
+          packages: >
+            l3build latex latex-bin luatex latex-bin-dev 
+
+      - name: Install Chinese fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-noto-cjk
+
+      - name: Compile LaTeX document
+        run: |
+          # Clean previous files
+          rm -f *.pdf *.aux *.log *.toc *.bbl *.blg
+          
+          latexmk -xelatex main.tex
+          
+          # Check if PDF was generated
+          if [ ! -f main.pdf ]; then
+            echo "Error: PDF not generated"
+            exit 1
+          fi
+
+      - name: Upload PDF to Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: compiled-pdf
+          path: main.pdf
+          retention-days: 30
+
+      - name: Upload logs to Artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: compilation-logs
+          path: |
+            *.aux
+            *.log
+            *.toc
+          retention-days: 7
