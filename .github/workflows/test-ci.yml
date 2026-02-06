@@ -36,6 +36,7 @@ jobs:
           rm -f *.pdf *.aux *.log *.toc *.bbl *.blg
           
           # Run MiKTeX Docker container to compile the document
+          # First install required CJK fonts and packages
           docker run -i \
             -v miktex_data:/var/lib/miktex \
             -v "$(pwd)":/miktex/work \
@@ -43,6 +44,9 @@ jobs:
             miktex/miktex:essential \
             sh -c "
               cd /miktex/work && \
+              # Install CJK support packages
+              miktex packages install ctex fontspec xecjk fandol && \
+              # Compile the document
               xelatex main.tex && \
               bibtex main.aux && \
               xelatex main.tex && \

@@ -32,6 +32,7 @@ jobs:
           rm -f *.pdf *.aux *.log *.toc *.bbl *.blg
           
           # Run MiKTeX Docker container to compile the document
+          # First install required CJK fonts and packages
           docker run -i \
             -v miktex_data:/var/lib/miktex \
             -v "$(pwd)":/miktex/work \
@@ -39,6 +40,9 @@ jobs:
             miktex/miktex:essential \
             sh -c "
               cd /miktex/work && \
+              # Install CJK support packages
+              miktex packages install ctex fontspec xecjk fandol && \
+              # Compile the document
               xelatex main.tex && \
               bibtex main.aux && \
               xelatex main.tex && \
@@ -71,7 +75,7 @@ jobs:
             
             自动生成的PDF文档
             
-            - 编译环境: Docker + MiKTeX Essential
+            - 编译环境: Docker + MiKTeX Essential + CJK支持
             - 编译时间: $(date -u)
 
       - name: Upload PDF to Release
