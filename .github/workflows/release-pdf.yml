@@ -40,34 +40,72 @@ jobs:
           # Update package database
           miktex packages update
           
-          # Add MiKTeX to PATH (try multiple locations)
-          MIKTEX_PATHS="/home/runner/.miktex/bin/x64:/opt/miktex/bin/x64:/usr/local/bin"
-          echo "$MIKTEX_PATHS" >> $GITHUB_PATH
+          # Comprehensive PATH configuration
+          echo "=== Finding MiKTeX installation paths ==="
+          find / -name "*miktex*" -type d 2>/dev/null | grep -E "(bin|exec)" | head -20
+          echo "=== Finding xelatex executable ==="
+          find / -name "xelatex" 2>/dev/null
           
-          # Also export for current session
-          export PATH="$MIKTEX_PATHS:$PATH"
+          # Try to locate miktex console to infer binary location
+          MIKTEX_CONSOLE=$(find / -name "miktex-console" 2>/dev/null | head -1)
+          if [ -n "$MIKTEX_CONSOLE" ]; then
+            echo "Found miktex-console at: $MIKTEX_CONSOLE"
+            MIKTEX_BIN_DIR=$(dirname "$MIKTEX_CONSOLE")
+            echo "Inferred bin directory: $MIKTEX_BIN_DIR"
+          fi
           
-          # Verify installation and find xelatex
-          echo "Verifying MiKTeX installation..."
-          miktex --version
-          echo "Searching for xelatex..."
-          find / -name "xelatex" 2>/dev/null | head -10
-          which xelatex || echo "xelatex still not found"
+          # Common MiKTeX binary paths
+          COMMON_PATHS="/usr/bin:/usr/local/bin:/opt/miktex/bin:/opt/miktex/bin/x64:/opt/miktex/bin/x86_64-linux:/home/runner/.miktex/bin:/home/runner/.miktex/bin/x64"
+          
+          # Add to GitHub PATH for subsequent steps
+          echo "$COMMON_PATHS" >> $GITHUB_PATH
+          
+          # Export for current session
+          export PATH="$COMMON_PATHS:$PATH"
+          
+          echo "=== Current PATH ==="
+          echo "$PATH"
+          
+          echo "=== Testing miktex command ==="
+          miktex --version || echo "miktex command not found"
+          
+          echo "=== Trying to find and test xelatex ==="
+          # Try different ways to locate xelatex
+          for path in $COMMON_PATHS; do
+            if [ -d "$path" ] && [ -x "$path/xelatex" ]; then
+              echo "Found xelatex at: $path/xelatex"
+              "$path/xelatex" --version
+              # Create symlink in /usr/local/bin if not exists
+              if [ ! -f /usr/local/bin/xelatex ]; then
+                sudo ln -s "$path/xelatex" /usr/local/bin/xelatex
+                echo "Created symlink /usr/local/bin/xelatex"
+              fi
+              break
+            fi
+          done
 
       - name: Install Chinese font support
         run: |
-          # Refresh PATH for this step
-          export PATH="/home/runner/.miktex/bin/x64:/opt/miktex/bin/x64:/usr/local/bin:$PATH"
+          # Ensure PATH is set
+          export PATH="/usr/bin:/usr/local/bin:/opt/miktex/bin:/opt/miktex/bin/x64:/opt/miktex/bin/x86_64-linux:/home/runner/.miktex/bin:/home/runner/.miktex/bin/x64:$PATH"
           
           # Install Fandol fonts for Chinese support
           sudo apt-get install -y fonts-noto-cjk
           
           # Install additional packages for CJK support
-          miktex packages install ctex fontspec xecjk fandol
+          echo "Installing CJK packages..."
+          miktex packages install ctex fontspec xecjk fandol || echo "Package installation may have issues"
           
           # Verify xelatex is available
           echo "Testing xelatex availability..."
-          xelatex --version
+          xelatex --version || echo "xelatex still not found"
+          
+          # If xelatex not found, try direct path execution
+          echo "Trying alternative xelatex locations..."
+          find /opt /home -name "xelatex" -executable 2>/dev/null | while read -r exe; do
+            echo "Testing: $exe"
+            "$exe" --version 2>/dev/null && echo "SUCCESS: $exe works" && break
+          done
 
       - name: Compile LaTeX document
         id: compile
