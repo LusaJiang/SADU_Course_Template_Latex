@@ -39,14 +39,35 @@ jobs:
           
           # Update package database
           miktex packages update
+          
+          # Add MiKTeX to PATH (try multiple locations)
+          MIKTEX_PATHS="/home/runner/.miktex/bin/x64:/opt/miktex/bin/x64:/usr/local/bin"
+          echo "$MIKTEX_PATHS" >> $GITHUB_PATH
+          
+          # Also export for current session
+          export PATH="$MIKTEX_PATHS:$PATH"
+          
+          # Verify installation and find xelatex
+          echo "Verifying MiKTeX installation..."
+          miktex --version
+          echo "Searching for xelatex..."
+          find / -name "xelatex" 2>/dev/null | head -10
+          which xelatex || echo "xelatex still not found"
 
       - name: Install Chinese font support
         run: |
+          # Refresh PATH for this step
+          export PATH="/home/runner/.miktex/bin/x64:/opt/miktex/bin/x64:/usr/local/bin:$PATH"
+          
           # Install Fandol fonts for Chinese support
           sudo apt-get install -y fonts-noto-cjk
           
           # Install additional packages for CJK support
           miktex packages install ctex fontspec xecjk fandol
+          
+          # Verify xelatex is available
+          echo "Testing xelatex availability..."
+          xelatex --version
 
       - name: Compile LaTeX document
         id: compile
