@@ -39,7 +39,10 @@ jobs:
           # Clean previous files
           rm -f *.pdf *.aux *.log *.toc *.bbl *.blg
           
-          latexmk -xelatex main.tex
+          xelatex main.tex
+          bibtex main.aux
+          xelatex main.tex
+          xelatex main.tex
           
           # Check if PDF was generated
           if [ ! -f main.pdf ]; then
