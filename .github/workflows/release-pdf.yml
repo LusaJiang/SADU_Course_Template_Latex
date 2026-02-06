@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - 'V*'
+      - 'v*'
   workflow_dispatch:
 
 concurrency:
@@ -19,51 +19,72 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Docker
-        uses: docker/setup-buildx-action@v3
-
-      - name: Pull MiKTeX Docker image
+      - name: Install MiKTeX
         run: |
-          docker pull miktex/miktex:essential
+          # Import GPG key for MiKTeX repository
+          curl -fsSL https://miktex.org/download/key | sudo gpg --dearmor -o /usr/share/keyrings/miktex.gpg
+          
+          # Add MiKTeX repository (Ubuntu 24.04/noble)
+          echo "deb [signed-by=/usr/share/keyrings/miktex.gpg] https://miktex.org/download/ubuntu noble universe" | sudo tee /etc/apt/sources.list.d/miktex.list
+          
+          # Update package list and install MiKTeX
+          sudo apt-get update
+          sudo apt-get install -y miktex
+          
+          # Complete private installation
+          miktexsetup finish
+          
+          # Enable automatic package installation
+          initexmf --set-config-value [MPM]AutoInstall=1
+          
+          # Update package database
+          miktex packages update
 
-      - name: Compile LaTeX document with Docker MiKTeX
+      - name: Install Chinese font support
+        run: |
+          # Install Fandol fonts for Chinese support
+          sudo apt-get install -y fonts-noto-cjk
+          
+          # Install additional packages for CJK support
+          miktex packages install ctex fontspec xecjk fandol
+
+      - name: Compile LaTeX document
         id: compile
         continue-on-error: true
         run: |
-          # Clean previous files
-          rm -f *.pdf *.aux *.log *.toc *.bbl *.blg
+          # Clean previous compilation files
+          rm -f *.pdf *.aux *.log *.toc *.bbl *.blg *.out *.lof *.lot
           
-          # Run MiKTeX Docker container to compile the document
-          # First install required CJK fonts and packages
-          docker run -i \
-            -v miktex_data:/var/lib/miktex \
-            -v "$(pwd)":/miktex/work \
-            -e MIKTEX_UID=$(id -u) \
-            miktex/miktex:essential \
-            sh -c "
-              cd /miktex/work && \
-              # Install CJK support packages
-              miktex packages install ctex fontspec xecjk fandol && \
-              # Compile the document
-              xelatex main.tex && \
-              bibtex main.aux && \
-              xelatex main.tex && \
-              xelatex main.tex
-            "
-
-      - name: Check compilation result
-        run: |
-          if [ ! -f main.pdf ]; then
-            echo "Warning: PDF not generated, compilation may have failed"
-            echo "COMPILATION_FAILED=true" >> $GITHUB_ENV
+          # Compile the document with XeLaTeX
+          echo "Compiling with xelatex..."
+          xelatex main.tex
+          
+          # Run BibTeX if .bib file exists
+          if [ -f reference.bib ]; then
+            echo "Running bibtex..."
+            bibtex main.aux || echo "BibTeX failed, continuing..."
+          fi
+          
+          # Second compilation for cross-references
+          echo "Second xelatex compilation..."
+          xelatex main.tex
+          
+          # Third compilation for final formatting
+          echo "Final xelatex compilation..."
+          xelatex main.tex
+          
+          # Check if PDF was generated successfully
+          if [ -f main.pdf ]; then
+            echo "PDF generated successfully"
+            echo "compilation_success=true" >> $GITHUB_OUTPUT
           else
-            echo "Compilation successful"
-            echo "COMPILATION_FAILED=false" >> $GITHUB_ENV
+            echo "PDF generation failed"
+            echo "compilation_success=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Upload compilation logs (always)
-        uses: actions/upload-artifact@v4
+      - name: Upload compilation logs
         if: always()
+        uses: actions/upload-artifact@v4
         with:
           name: compilation-logs-${{ github.run_number }}
           path: |
@@ -72,16 +93,19 @@ jobs:
             *.toc
             *.bbl
             *.blg
+            *.out
+            *.lof
+            *.lot
           retention-days: 7
 
       - name: Rename PDF with version
-        if: env.COMPILATION_FAILED == 'false'
+        if: ${{ steps.compile.outputs.compilation_success == 'true' }}
         run: |
           VERSION=${GITHUB_REF_NAME#v}
           mv main.pdf "山东农业大学课程报告_${VERSION}.pdf"
 
       - name: Create Release
-        if: env.COMPILATION_FAILED == 'false'
+        if: ${{ steps.compile.outputs.compilation_success == 'true' }}
         id: create_release
         uses: actions/create-release@v1
         env:
@@ -96,11 +120,11 @@ jobs:
             
             自动生成的PDF文档
             
-            - 编译环境: Docker + MiKTeX Essential + CJK支持
+            - 编译环境: MiKTeX + CJK支持
             - 编译时间: $(date -u)
 
       - name: Upload PDF to Release
-        if: env.COMPILATION_FAILED == 'false'
+        if: ${{ steps.compile.outputs.compilation_success == 'true' }}
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -110,8 +134,26 @@ jobs:
           asset_name: 山东农业大学课程报告_${{ github.ref_name }}.pdf
           asset_content_type: application/pdf
 
-      - name: Report compilation failure
-        if: env.COMPILATION_FAILED == 'true'
+      - name: Display compilation summary
+        if: always()
         run: |
-          echo "❌ Compilation failed - check the uploaded logs for details"
+          echo "=== Release Compilation Summary ==="
+          echo "Tag: ${{ github.ref_name }}"
+          echo "PDF exists: $([ -f main.pdf ] && echo 'Yes' || echo 'No')"
+          echo "Compilation success: ${{ steps.compile.outputs.compilation_success }}"
+          echo "Working directory contents:"
+          ls -la
+          
+          # Show log file if it exists
+          if [ -f main.log ]; then
+            echo ""
+            echo "=== Last 50 lines of main.log ==="
+            tail -50 main.log
+          fi
+
+      - name: Report compilation failure
+        if: ${{ steps.compile.outputs.compilation_success != 'true' }}
+        run: |
+          echo "❌ LaTeX compilation failed for release"
+          echo "Check the uploaded logs for detailed error information"
           exit 1
