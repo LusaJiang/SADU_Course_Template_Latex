@@ -31,6 +31,8 @@ jobs:
           docker pull miktex/miktex:essential
 
       - name: Compile LaTeX document with Docker MiKTeX
+        id: compile
+        continue-on-error: true
         run: |
           # Clean previous files
           rm -f *.pdf *.aux *.log *.toc *.bbl *.blg
@@ -52,27 +54,40 @@ jobs:
               xelatex main.tex && \
               xelatex main.tex
             "
-          
-          # Check if PDF was generated
+
+      - name: Check compilation result
+        run: |
           if [ ! -f main.pdf ]; then
-            echo "Error: PDF not generated"
-            exit 1
+            echo "Warning: PDF not generated, compilation may have failed"
+            echo "COMPILATION_FAILED=true" >> $GITHUB_ENV
+          else
+            echo "Compilation successful"
+            echo "COMPILATION_FAILED=false" >> $GITHUB_ENV
           fi
 
       - name: Upload PDF to Artifacts
+        if: ${{ env.COMPILATION_FAILED == 'false' }}
         uses: actions/upload-artifact@v4
         with:
-          name: compiled-pdf
+          name: compiled-pdf-${{ github.run_number }}
           path: main.pdf
           retention-days: 30
 
-      - name: Upload logs to Artifacts
+      - name: Upload compilation logs (always)
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: compilation-logs
+          name: compilation-logs-${{ github.run_number }}
           path: |
             *.aux
             *.log
             *.toc
+            *.bbl
+            *.blg
           retention-days: 7
+
+      - name: Report compilation failure
+        if: ${{ env.COMPILATION_FAILED == 'true' }}
+        run: |
+          echo "❌ Compilation failed - check the uploaded logs for details"
+          exit 1
