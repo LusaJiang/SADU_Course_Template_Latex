@@ -23,13 +23,26 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install TeX Live
-        uses: zauguin/install-texlive@v4
-
-      - name: Install Chinese fonts
+      - name: Install MiKTeX GPG key
         run: |
-          sudo apt-get update
-          sudo apt-get install -y fonts-noto-cjk latex-cjk-all texmaker
+          curl -fsSL https://miktex.org/download/key | sudo gpg --dearmor -o /usr/share/keyrings/miktex.gpg
+
+      - name: Register MiKTeX installation source
+        run: |
+          echo "deb [signed-by=/usr/share/keyrings/miktex.gpg] https://miktex.org/download/ubuntu noble universe" | sudo tee /etc/apt/sources.list.d/miktex.list
+
+      - name: Install MiKTeX
+        run: |
+          sudo apt update
+          sudo apt install -y miktex fonts-noto-cjk latex-cjk-all
+
+      - name: Setup MiKTeX (private installation)
+        run: |
+          miktexsetup finish
+
+      - name: Enable automatic package installation
+        run: |
+          initexmf --set-config-value [MPM]AutoInstall=1
 
       - name: Compile LaTeX document
         run: |

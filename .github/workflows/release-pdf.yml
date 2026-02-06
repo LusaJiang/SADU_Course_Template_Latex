@@ -19,23 +19,36 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install TeX Live
-        uses: zauguin/install-texlive@v4
-        with:
-          packages: >
-            l3build latex latex-bin luatex latex-bin-dev 
-
-      - name: Install Chinese fonts
+      - name: Install MiKTeX GPG key
         run: |
-          sudo apt-get update
-          sudo apt-get install -y fonts-noto-cjk
+          curl -fsSL https://miktex.org/download/key | sudo gpg --dearmor -o /usr/share/keyrings/miktex.gpg
+
+      - name: Register MiKTeX installation source
+        run: |
+          echo "deb [signed-by=/usr/share/keyrings/miktex.gpg] https://miktex.org/download/ubuntu noble universe" | sudo tee /etc/apt/sources.list.d/miktex.list
+
+      - name: Install MiKTeX
+        run: |
+          sudo apt update
+          sudo apt install -y miktex fonts-noto-cjk latex-cjk-all
+
+      - name: Setup MiKTeX (private installation)
+        run: |
+          miktexsetup finish
+
+      - name: Enable automatic package installation
+        run: |
+          initexmf --set-config-value [MPM]AutoInstall=1
 
       - name: Compile LaTeX document
         run: |
           # Clean previous files
           rm -f *.pdf *.aux *.log *.toc *.bbl *.blg
           
-          latexmk -xelatex main.tex
+          xelatex main.tex
+          bibtex main.aux
+          xelatex main.tex
+          xelatex main.tex
           
           # Check if PDF was generated
           if [ ! -f main.pdf ]; then
@@ -63,7 +76,7 @@ jobs:
             
             自动生成的PDF文档
             
-            - 编译环境: Ubuntu + TeX Live 2025
+            - 编译环境: Ubuntu + MiKTeX
             - 编译时间: $(date -u)
 
       - name: Upload PDF to Release
